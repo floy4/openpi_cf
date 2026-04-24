@@ -513,17 +513,7 @@ class Pi0(_model.BaseModel):
             noise=noise,
         )
 
-        # 2.5. Visualization (if enabled and at correct frequency)
-        if visualize_attention and step_idx % visualization_frequency == 0:
-            self._visualize_attention(
-                attn_data,
-                observation,
-                visualization_dir,
-                step_idx,
-                episode_idx,
-                layer_index,
-                cf_mode,
-            )
+        # Visualization is handled outside JIT-compiled sampling paths.
 
         cf_attn_mask = self.build_token_level_cf_attn_mask_from_attention(
             attn_data["last_query_attn_head_avg"],
@@ -750,17 +740,7 @@ class Pi0(_model.BaseModel):
             noise=noise,
         )
 
-        # 2.5. Visualization (if enabled and at correct frequency)
-        if visualize_attention and step_idx % visualization_frequency == 0:
-            self._visualize_attention(
-                attn_data,
-                observation,
-                visualization_dir,
-                step_idx,
-                episode_idx,
-                layer_index,
-                cf_mode,
-            )
+        # Visualization is handled outside JIT-compiled sampling paths.
 
         # 3. Zero high-attention pixel patches
         modified_images = self._zero_high_attention_pixel_patches(

@@ -144,6 +144,52 @@ class Policy(BasePolicy):
         self._step_idx = 0
         self._episode_idx = 0
 
+    def _maybe_visualize_attention(
+        self,
+        sample_rng: at.KeyArrayLike,
+        observation: _model.Observation,
+        sample_kwargs: dict[str, Any],
+    ) -> None:
+        """Run attention visualization outside the JIT-compiled sampling path."""
+        if self._is_pytorch_model or not sample_kwargs.get("visualize_attention", False):
+            return
+
+        if not (self._use_cf_token_sampling or self._use_cf_pixel_sampling):
+            return
+
+        if not hasattr(self._model, "extract_single_step_attention_map") or not hasattr(self._model, "_visualize_attention"):
+            return
+
+        frequency = int(sample_kwargs.get("visualization_frequency", 10))
+        if frequency <= 0 or self._step_idx % frequency != 0:
+            return
+
+        layer_index = int(sample_kwargs.get("layer_index", 16))
+        attention_time = float(sample_kwargs.get("attention_time", 1.0))
+        visualization_dir = str(sample_kwargs.get("visualization_dir", "results/attention_vis"))
+        cf_mode = str(sample_kwargs.get("cf_mode", "E"))
+        noise = sample_kwargs.get("noise")
+
+        try:
+            attn_data = self._model.extract_single_step_attention_map(
+                sample_rng,
+                observation,
+                layer_index=layer_index,
+                time=attention_time,
+                noise=noise,
+            )
+            self._model._visualize_attention(
+                attn_data,
+                observation,
+                visualization_dir,
+                self._step_idx,
+                self._episode_idx,
+                layer_index,
+                cf_mode,
+            )
+        except Exception as exc:
+            logging.warning("Attention visualization skipped due to error: %s", exc)
+
     @override
     def infer(self, obs: dict, *, noise: np.ndarray | None = None) -> dict:  # type: ignore[misc]
         # Make a copy since transformations may modify the inputs in place.
@@ -167,17 +213,16 @@ class Policy(BasePolicy):
                 noise = noise[None, ...]  # Make it (1, action_horizon, action_dim)
             sample_kwargs["noise"] = noise
 
-        # Add step and episode indices for visualization (if enabled)
-        if sample_kwargs.get("visualize_attention", False):
-            sample_kwargs["step_idx"] = self._step_idx
-            sample_kwargs["episode_idx"] = self._episode_idx
+        observation = _model.Observation.from_dict(inputs)
+
+        # Run visualization outside the jitted sampling function to avoid traced Python control flow.
+        self._maybe_visualize_attention(sample_rng_or_pytorch_device, observation, sample_kwargs)
 
         # Increment step counter
         self._step_idx += 1
 
         # return_cf_metrics 由 sample_kwargs 控制
 
-        observation = _model.Observation.from_dict(inputs)
         start_time = time.monotonic()
 
         # 调用采样函数，可能返回 tuple (actions, metrics)
