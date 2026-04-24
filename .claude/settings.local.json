@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c ' *)",
+      "Bash(python -m py_compile src/openpi/models/cf_attention/cf_sampler.py)",
+      "Bash(nvidia-smi)"
+    ]
+  }
+}

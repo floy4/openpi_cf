@@ -1,0 +1,63 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "serve_policy",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/scripts/serve_policy.py",
+            "console": "integratedTerminal",
+            "args": [
+                // "policy:checkpoint",
+                // "--policy.config=pi05_libero",
+                // "--policy.dir=/home/zhy/nas/models/pi05_libero_finetuned",
+                "--env","LIBERO",
+                "--use_cf_sampling"
+            ],
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "2",
+                // "JAX_DISABLE_JIT": "1"
+            },
+            "justMyCode": false
+        },
+        {
+            "name": "libero client",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/examples/libero/main.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "MUJOCO_GL": "egl",
+                "PYOPENGL_PLATFORM": "egl",
+                "CUDA_VISIBLE_DEVICES": "2",
+                "PYTHONUNBUFFERED": "1"
+            },
+            "args": [
+                "--args.task_suite_name", "libero_spatial", // 在这里修改你想调试的任务集
+                "--args.video_out_path", "data/pi05_cf_libero/debug_out"
+            ]
+        },
+        {
+            "name": "Debug CF Attn LIBERO",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/scripts/eval_cf_attn_level_libero.py",
+            "console": "integratedTerminal",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "7"
+            },
+            "args": [
+                "--checkpoint_dir", "/data4/zhy/models/openpi-assets/checkpoints/pi05_libero",
+                "--cf_guidance_scale", "0.1",
+                "--state_weight_base", "0.05",
+                "--task_suite_names", "libero_10",
+                "--num_trials_per_task", "50",
+                "--gpu_id", "7",
+                "--video_out_path", "data/cf_attn_level_libero"
+            ],
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false
+        }
+    ]
+}
