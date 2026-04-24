@@ -647,6 +647,7 @@ class Pi0(_model.BaseModel):
 
             # Build modified image using JAX operations
             modified = jnp.copy(img)
+            zero_patch = jnp.zeros((1, patch_size, patch_size, c), dtype=img.dtype)
 
             for b in range(batch_size):
                 # Flatten attention and select top-k indices
@@ -663,7 +664,11 @@ class Pi0(_model.BaseModel):
                     col = idx % num_patches_side
                     y_start = row * patch_size
                     x_start = col * patch_size
-                    modified = modified.at[b, y_start:y_start+patch_size, x_start:x_start+patch_size].set(0.0)
+                    modified = jax.lax.dynamic_update_slice(
+                        modified,
+                        zero_patch,
+                        (b, y_start, x_start, 0),
+                    )
 
             modified_images[name] = modified
 
