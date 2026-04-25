@@ -40,6 +40,11 @@ def create_attention_heatmap(
     if not HAS_MATPLOTLIB:
         raise ImportError("matplotlib is required for attention visualization")
 
+    attention_map = np.asarray(attention_map, dtype=np.float32)
+    original_image = np.asarray(original_image)
+    if original_image.dtype != np.uint8:
+        original_image = np.clip(original_image, 0, 255).astype(np.uint8)
+
     # Handle flattened attention
     if attention_map.ndim == 1:
         # Assume square grid if possible
@@ -157,7 +162,7 @@ def save_attention_visualization(
             # Use full attention if bounds not available
             camera_attn = attn_map
 
-        camera_attn = np.asarray(camera_attn)
+        camera_attn = np.asarray(camera_attn, dtype=np.float32)
         if camera_attn.ndim > 1 and camera_attn.shape[0] == 1:
             camera_attn = camera_attn[0]
 
