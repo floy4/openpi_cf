@@ -36,6 +36,7 @@ class Args:
     )
     num_steps_wait: int = 10  # Number of steps to wait for objects to stabilize i n sim
     num_trials_per_task: int = 50  # Number of rollouts per task
+    max_tasks_in_suite: int | None = None  # Optional cap on how many tasks to run from the suite
 
     #################################################################################################################
     # Utils
@@ -43,6 +44,37 @@ class Args:
     video_out_path: str = "data/libero/videos"  # Path to save videos
 
     seed: int = 7  # Random Seed (for reproducibility)
+
+
+def _summarize_cf_metrics(cf_metrics: dict) -> str:
+    """Format CF metrics defensively so different CF modes don't break logging."""
+    fields = []
+    preferred_keys = [
+        "effect_cf",
+        "delta_cf_norm",
+        "use_baseline",
+        "effect_vlm",
+        "effect_prop",
+        "effect_state",
+        "actual_vlm_weight",
+        "actual_prop_weight",
+        "actual_state_weight",
+        "cf_level",
+        "cf_mode",
+    ]
+
+    for key in preferred_keys:
+        if key not in cf_metrics:
+            continue
+        value = cf_metrics[key]
+        if isinstance(value, float):
+            fields.append(f"{key}={value:.4f}")
+        else:
+            fields.append(f"{key}={value}")
+
+    if not fields:
+        fields.append(f"keys={sorted(cf_metrics.keys())}")
+    return ", ".join(fields)
 
 
 def eval_libero(args: Args) -> None:
@@ -53,7 +85,10 @@ def eval_libero(args: Args) -> None:
     benchmark_dict = benchmark.get_benchmark_dict()
     task_suite = benchmark_dict[args.task_suite_name]()
     num_tasks_in_suite = task_suite.n_tasks
+    if args.max_tasks_in_suite is not None:
+        num_tasks_in_suite = min(num_tasks_in_suite, args.max_tasks_in_suite)
     logging.info(f"Task suite: {args.task_suite_name}")
+    logging.info(f"Running {num_tasks_in_suite} task(s) from suite")
 
     pathlib.Path(args.video_out_path).mkdir(parents=True, exist_ok=True)
 
@@ -153,14 +188,7 @@ def eval_libero(args: Args) -> None:
                                 **result["cf_metrics"],
                             }
                             cf_metrics_history.append(cf_metrics_entry)
-                            # 打印当前 CF 权重信息
-                            logging.info(
-                                f"CF metrics at step {t}: "
-                                f"effect_vlm={result['cf_metrics']['effect_vlm']:.4f}, "
-                                f"effect_state={result['cf_metrics'].get('effect_prop', result['cf_metrics'].get('effect_state', 0)):.4f}, "
-                                f"vlm_weight={result['cf_metrics']['actual_vlm_weight']:.4f}, "
-                                f"state_weight={result['cf_metrics'].get('actual_prop_weight', result['cf_metrics'].get('actual_state_weight', 0)):.4f}"
-                            )
+                            logging.info("CF metrics at step %s: %s", t, _summarize_cf_metrics(result["cf_metrics"]))
 
                         assert (
                             len(action_chunk) >= args.replan_steps
@@ -187,15 +215,16 @@ def eval_libero(args: Args) -> None:
             # Save a replay video of the episode
             suffix = "success" if done else "failure"
             task_segment = task_description.replace(" ", "_")
+            episode_tag = f"ep{episode_idx:03d}"
             imageio.mimwrite(
-                pathlib.Path(args.video_out_path) / f"rollout_{task_segment}_{suffix}.mp4",
+                pathlib.Path(args.video_out_path) / f"rollout_{task_segment}_{episode_tag}_{suffix}.mp4",
                 [np.asarray(x) for x in replay_images],
                 fps=10,
             )
 
             # Save CF metrics history to JSON file
             if cf_metrics_history:
-                cf_metrics_path = pathlib.Path(args.video_out_path) / f"cf_metrics_{task_segment}_{suffix}.json"
+                cf_metrics_path = pathlib.Path(args.video_out_path) / f"cf_metrics_{task_segment}_{episode_tag}_{suffix}.json"
                 import json
                 cf_metrics_path.write_text(json.dumps({
                     "task_description": task_description,
@@ -211,10 +240,13 @@ def eval_libero(args: Args) -> None:
             logging.info(f"# successes: {total_successes} ({total_successes / total_episodes * 100:.1f}%)")
 
         # Log final results
-        logging.info(f"Current task success rate: {float(task_successes) / float(task_episodes)}")
-        logging.info(f"Current total success rate: {float(total_successes) / float(total_episodes)}")
+        task_success_rate = float(task_successes) / float(task_episodes) if task_episodes else 0.0
+        total_success_rate = float(total_successes) / float(total_episodes) if total_episodes else 0.0
+        logging.info(f"Current task success rate: {task_success_rate}")
+        logging.info(f"Current total success rate: {total_success_rate}")
 
-    logging.info(f"Total success rate: {float(total_successes) / float(total_episodes)}")
+    success_rate = float(total_successes) / float(total_episodes) if total_episodes else 0.0
+    logging.info(f"Total success rate: {success_rate}")
     logging.info(f"Total episodes: {total_episodes}")
 
     # Save final results to disk alongside the replay videos.
@@ -225,7 +257,7 @@ def eval_libero(args: Args) -> None:
         """Total success rate: {success_rate:.4f}\n""".format(
             total_episodes=total_episodes,
             total_successes=total_successes,
-            success_rate=float(total_successes) / float(total_episodes),
+            success_rate=success_rate,
         )
     )
 
