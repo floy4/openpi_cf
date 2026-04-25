@@ -3,11 +3,13 @@
 Provides functions to create and save attention heatmaps overlaid on original images.
 """
 
-import os
+import logging
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 try:
     import matplotlib.pyplot as plt
@@ -104,6 +106,7 @@ def save_attention_visualization(
         List of saved file paths.
     """
     if not HAS_MATPLOTLIB:
+        logger.warning("matplotlib is not available; skipping attention visualization")
         return []
 
     output_path = Path(output_dir)
@@ -123,15 +126,24 @@ def save_attention_visualization(
         attn_map = attn_map.to_numpy()
     attn_map = np.asarray(attn_map)
 
-    # Handle batch dimension
-    if attn_map.ndim == 3:
-        attn_map = attn_map[0]  # Take first batch item
+    # Keep a single sample for visualization.
+    if attn_map.ndim >= 2:
+        attn_map = attn_map[0]
 
     # Process each camera
     for camera_name, image in images.items():
         if hasattr(image, "to_numpy"):
             image = image.to_numpy()
         image = np.asarray(image)
+        if image.ndim == 4:
+            image = image[0]
+        if image.ndim != 3:
+            logger.warning(
+                "Skipping attention visualization for camera %s due to unexpected image shape %s",
+                camera_name,
+                image.shape,
+            )
+            continue
 
         # Get attention for this camera
         if camera_name in image_bounds:
@@ -145,10 +157,21 @@ def save_attention_visualization(
             # Use full attention if bounds not available
             camera_attn = attn_map
 
+        camera_attn = np.asarray(camera_attn)
+        if camera_attn.ndim > 1 and camera_attn.shape[0] == 1:
+            camera_attn = camera_attn[0]
+
         # Create heatmap
         try:
             blended = create_attention_heatmap(camera_attn, image, alpha=0.4)
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "Failed to create attention heatmap for camera %s (image shape=%s, attn shape=%s): %s",
+                camera_name,
+                image.shape,
+                camera_attn.shape,
+                exc,
+            )
             continue
 
         # Build filename
@@ -165,6 +188,9 @@ def save_attention_visualization(
         filepath = output_path / filename
         plt.imsave(str(filepath), blended)
         saved_files.append(str(filepath))
+
+    if not saved_files:
+        logger.warning("No attention visualization files were saved to %s", output_dir)
 
     return saved_files
 

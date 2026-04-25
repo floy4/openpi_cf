@@ -1051,6 +1051,8 @@ class Pi0(_model.BaseModel):
 
         if saved_files:
             logger.info(f"Saved {len(saved_files)} attention visualization(s) to {visualization_dir}")
+        else:
+            logger.warning("Attention visualization produced no files in %s", visualization_dir)
 
     def sample_actions_with_cf(
         self,
