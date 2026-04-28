@@ -11,6 +11,25 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+def _to_display_uint8(image: np.ndarray) -> np.ndarray:
+    """Convert model-space images to displayable uint8 RGB."""
+    image = np.asarray(image)
+
+    if image.dtype == np.uint8:
+        return image
+
+    image = image.astype(np.float32)
+
+    # Model observations are typically normalized to [-1, 1].
+    if image.min() >= -1.5 and image.max() <= 1.5:
+        image = (image + 1.0) * 127.5
+    # Some paths may provide float images already in [0, 1].
+    elif image.min() >= 0.0 and image.max() <= 1.5:
+        image = image * 255.0
+
+    return np.clip(image, 0.0, 255.0).astype(np.uint8)
+
+
 try:
     import matplotlib.pyplot as plt
     import matplotlib.cm as cm
@@ -41,9 +60,7 @@ def create_attention_heatmap(
         raise ImportError("matplotlib is required for attention visualization")
 
     attention_map = np.asarray(attention_map, dtype=np.float32)
-    original_image = np.asarray(original_image)
-    if original_image.dtype != np.uint8:
-        original_image = np.clip(original_image, 0, 255).astype(np.uint8)
+    original_image = _to_display_uint8(original_image)
 
     # Handle flattened attention
     if attention_map.ndim == 1:
